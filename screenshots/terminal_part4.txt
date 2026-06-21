@@ -1,0 +1,53 @@
+(base) ➜  nosql git:(main) ✗ mongosh "$MONGO_URI" --file queries/part4_indexes.js
+Current Mongosh Log ID: 6a38399e6a727a07cf4a04ed
+Connecting to:          mongodb+srv://<credentials>@cluster0.iepcnm5.mongodb.net/?appName=Cluster0
+Using MongoDB:          8.0.26
+Using Mongosh:          2.1.5
+mongosh 2.8.3 is available for download: https://www.mongodb.com/try/download/shell
+
+For mongosh info see: https://docs.mongodb.com/mongodb-shell/
+
+Loading file: queries/part4_indexes.js
+
+=== Завдання 1: explain() ДО індексу ===
+{
+  stage: 'SORT',
+  totalDocsExamined: 113999,
+  totalKeysExamined: 0,
+  executionTimeMillis: 74,
+  nReturned: 354
+}
+
+=== Створення індексу ===
+Індекс 'genre_danceability_popularity' створено.
+
+=== Завдання 1: explain() ПІСЛЯ індексу ===
+{
+  stage: 'FETCH',
+  inputStageStage: 'SORT',
+  indexName: undefined,
+  totalDocsExamined: 354,
+  totalKeysExamined: 354,
+  executionTimeMillis: 2,
+  nReturned: 354
+}
+
+=== Завдання 2: Індекс для пошуку фонової музики ===
+Індекс 'work_music_index' створено.
+{
+  stage: 'FETCH',
+  inputStageStage: 'IXSCAN',
+  indexName: 'work_music_index',
+  totalDocsExamined: 16141,
+  totalKeysExamined: 16844,
+  nReturned: 16141
+}
+
+=== Завдання 3: Covered query — explain() ===
+{
+  stage: 'FETCH',
+  inputStageStage: 'IXSCAN',
+  totalDocsExamined: 317,
+  totalKeysExamined: 620,
+  nReturned: 317
+}
