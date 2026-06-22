@@ -218,7 +218,7 @@ db.tracks.find({
   stage: 'SORT',
   totalDocsExamined: 113999,
   totalKeysExamined: 0,
-  executionTimeMillis: 74,
+  executionTimeMillis: 134,
   nReturned: 354
 }
 ```
@@ -227,7 +227,7 @@ db.tracks.find({
 
 ```javascript
 db.tracks.createIndex(
-  { track_genre: 1, "audio_features.danceability": 1, popularity: -1 },
+  { track_genre: 1, popularity: -1, "audio_features.danceability": 1 },
   { name: "genre_danceability_popularity" }
 )
 ```
@@ -237,10 +237,10 @@ db.tracks.createIndex(
 ```
 {
   stage: 'FETCH',
-  inputStageStage: 'SORT',
-  indexName: undefined,
+  inputStageStage: 'IXSCAN',
+  indexName: 'genre_danceability_popularity',
   totalDocsExamined: 354,
-  totalKeysExamined: 354,
+  totalKeysExamined: 412,
   executionTimeMillis: 2,
   nReturned: 354
 }
@@ -248,14 +248,15 @@ db.tracks.createIndex(
 
 #### Що змінилося в плані виконання?
 
-**До індексу:** `stage: "SORT"` (сортування в пам'яті поверх повного сканування колекції), `totalDocsExamined: 113999`, `totalKeysExamined: 0`, `executionTimeMillis: 74`.
+**До індексу:** `stage: "SORT"` (повне сканування колекції + сортування в пам'яті), `totalDocsExamined: 113999`, `totalKeysExamined: 0`, `executionTimeMillis: 134`.
 
-**Після індексу:** `stage: "FETCH"` з `inputStage.stage: "SORT"` (MongoDB використовує індекс для фільтрації, сортування залишається але вже по малій вибірці), `totalDocsExamined: 354`, `totalKeysExamined: 354`, `executionTimeMillis: 2`.
+**Після індексу:** `stage: "FETCH"` з `inputStage.stage: "IXSCAN"`, `totalDocsExamined: 354`, `totalKeysExamined: 412`, `executionTimeMillis: 2`.
 
 **Як зрозуміти що індекс використовується:**
 - `totalDocsExamined` впав з 113 999 до 354 — MongoDB більше не сканує всю колекцію
-- `totalKeysExamined: 354` — з'явилося сканування ключів індексу (раніше було 0)
-- Час виконання скоротився з 74 мс до 2 мс
+- `totalKeysExamined: 412` — з'явилося сканування ключів індексу (раніше було 0)
+- `indexName: 'genre_danceability_popularity'` — підтверджує який індекс використано
+- Час виконання скоротився з 134 мс до 2 мс
 
 ![explain після індексу](screenshots/part4_explain_after.png)
 
@@ -268,9 +269,9 @@ db.tracks.createIndex(
 ```javascript
 db.tracks.createIndex(
   {
+    explicit: 1,
     "audio_features.instrumentalness": 1,
-    "audio_features.speechiness": 1,
-    explicit: 1
+    "audio_features.speechiness": 1
   },
   { name: "work_music_index" }
 )
@@ -282,10 +283,12 @@ db.tracks.createIndex(
   inputStageStage: 'IXSCAN',
   indexName: 'work_music_index',
   totalDocsExamined: 16141,
-  totalKeysExamined: 16844,
+  totalKeysExamined: 16602,
   nReturned: 16141
 }
 ```
+
+Порядок полів відповідає **ESR-правилу** (Equality → Sort → Range): `explicit` (точна рівність) стоїть першим, `instrumentalness` і `speechiness` (range-умови) — після.
 
 `inputStage.stage: "IXSCAN"` та `indexName: "work_music_index"` підтверджують використання індексу.
 
@@ -295,36 +298,44 @@ db.tracks.createIndex(
 
 ### Завдання 4.3 — Покривний запит (Covered Query)
 
-**Запит:**
-```javascript
-db.tracks.find({ track_genre: "pop", popularity: { $gte: 70 } })
+**Індекс з Завдання 1:** `{ track_genre: 1, popularity: -1, "audio_features.danceability": 1 }`
+
+Запит `db.tracks.find({ track_genre: "pop", popularity: { $gte: 70 } })` **без проєкції — НЕ покривний**, бо MongoDB має повернути ВСІ поля документа, а індекс містить тільки 3 поля. В explain видно `stage: "FETCH"`, `totalDocsExamined: 317`.
+
+```
+{
+  stage: 'FETCH',
+  inputStageStage: 'IXSCAN',
+  totalDocsExamined: 317,
+  totalKeysExamined: 317,
+  nReturned: 317
+}
 ```
 
-**Індекс з Завдання 1:** `{ track_genre: 1, "audio_features.danceability": 1, popularity: -1 }`
+Але якщо додати проєкцію тільки по полях що є в індексі і прибрати `_id`:
 
-**Відповідь: Ні, цей запит НЕ є покривним (covered query).**
-
-Покривний запит — це запит, для відповіді на який MongoDB отримує всі дані виключно зі структури індексу (B-tree), не завантажуючи реальні документи. Для цього необхідно:
-1. Усі поля фільтра є в індексі
-2. Усі поля відповіді (проєкції) є в індексі
-3. `_id` або виключений, або теж в індексі
-
-**Чому цей запит не покривний:**
-
-**По-перше**, запит не має проєкції — MongoDB повертає всі поля документа (`track_name`, `artists`, `audio_features` тощо). Жодне з них не входить до індексу, тому MongoDB виконує стадію `FETCH` — завантажує повні документи.
-
-**По-друге**, навіть якщо додати проєкцію `{ track_genre: 1, popularity: 1, _id: 0 }` — поле `popularity` стоїть третім в індексі, між `track_genre` і `popularity` знаходиться `"audio_features.danceability"` якого немає в запиті. MongoDB може використати лише префікс індексу `{ track_genre: 1 }` для фільтрації по жанру, але не може задовольнити запит цілком з індексу.
-
-**Для справжнього covered query потрібен окремий індекс:**
 ```javascript
-db.tracks.createIndex({ track_genre: 1, popularity: 1 })
-
-// + запит з проєкцією:
 db.tracks.find(
   { track_genre: "pop", popularity: { $gte: 70 } },
-  { track_genre: 1, popularity: 1, _id: 0 }
+  { _id: 0, track_genre: 1, popularity: 1 }
 )
 ```
-Тоді у `explain()` з'явиться `IXSCAN` без стадії `FETCH` — всі дані з індексу.
+
+то запит стає покривним:
+
+- `stage: "PROJECTION_COVERED"` — MongoDB знає що все є в індексі
+- `totalDocsExamined: 0` — жодного звернення до колекції
+- Немає `FETCH` — вся інформація з індексу
+
+```
+{
+  stage: 'PROJECTION_COVERED',
+  totalDocsExamined: 0,
+  totalKeysExamined: 317,
+  nReturned: 317
+}
+```
+
+По суті покривний запит швидший тому що індекс компактніший за повні документи і зазвичай повністю в RAM.
 
 ![explain covered query](screenshots/part4_explain_covered.png)

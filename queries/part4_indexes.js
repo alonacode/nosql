@@ -25,8 +25,8 @@ print("\n=== Створення індексу ===");
 db.tracks.createIndex(
   {
     track_genre: 1,
-    "audio_features.danceability": 1,
-    popularity: -1
+    popularity: -1,
+    "audio_features.danceability": 1
   },
   { name: "genre_danceability_popularity" }
 );
@@ -56,9 +56,9 @@ print("\n=== Завдання 2: Індекс для пошуку фонової
 
 db.tracks.createIndex(
   {
+    explicit: 1,
     "audio_features.instrumentalness": 1,
-    "audio_features.speechiness": 1,
-    explicit: 1
+    "audio_features.speechiness": 1
   },
   { name: "work_music_index" }
 );
@@ -66,9 +66,9 @@ db.tracks.createIndex(
 print("Індекс 'work_music_index' створено.");
 
 const workExplain = db.tracks.find({
+  explicit: false,
   "audio_features.instrumentalness": { $gt: 0.5 },
-  "audio_features.speechiness": { $lt: 0.1 },
-  explicit: false
+  "audio_features.speechiness": { $lt: 0.1 }
 }).explain("executionStats");
 
 printjson({
@@ -84,6 +84,8 @@ printjson({
 
 print("\n=== Завдання 3: Covered query — explain() ===");
 
+// без проєкції: FETCH, totalDocsExamined > 0
+print("\nwithout projection (not covered):");
 const coveredExplain = db.tracks.find({
   track_genre: "pop",
   popularity: { $gte: 70 }
@@ -97,4 +99,17 @@ printjson({
   nReturned: coveredExplain.executionStats.nReturned
 });
 
-print("Детальний аналіз — дивіться README, Частина 4, Завдання 3.");
+// з проєкцією: PROJECTION_COVERED, totalDocsExamined = 0
+print("\nwith projection (should be covered):");
+const coveredExplain2 = db.tracks.find(
+  { track_genre: "pop", popularity: { $gte: 70 } },
+  { _id: 0, track_genre: 1, popularity: 1 }
+).explain("executionStats");
+
+printjson({
+  stage: coveredExplain2.queryPlanner.winningPlan.stage,
+  totalDocsExamined: coveredExplain2.executionStats.totalDocsExamined,
+  totalKeysExamined: coveredExplain2.executionStats.totalKeysExamined,
+  nReturned: coveredExplain2.executionStats.nReturned
+});
+

@@ -1,5 +1,5 @@
 (base) ➜  nosql git:(main) ✗ mongosh "$MONGO_URI" --file queries/part4_indexes.js
-Current Mongosh Log ID: 6a38399e6a727a07cf4a04ed
+Current Mongosh Log ID: 6a3931e828dc8c8d2b2e91a5
 Connecting to:          mongodb+srv://<credentials>@cluster0.iepcnm5.mongodb.net/?appName=Cluster0
 Using MongoDB:          8.0.26
 Using Mongosh:          2.1.5
@@ -14,7 +14,7 @@ Loading file: queries/part4_indexes.js
   stage: 'SORT',
   totalDocsExamined: 113999,
   totalKeysExamined: 0,
-  executionTimeMillis: 74,
+  executionTimeMillis: 134,
   nReturned: 354
 }
 
@@ -24,10 +24,10 @@ Loading file: queries/part4_indexes.js
 === Завдання 1: explain() ПІСЛЯ індексу ===
 {
   stage: 'FETCH',
-  inputStageStage: 'SORT',
-  indexName: undefined,
+  inputStageStage: 'IXSCAN',
+  indexName: 'genre_danceability_popularity',
   totalDocsExamined: 354,
-  totalKeysExamined: 354,
+  totalKeysExamined: 412,
   executionTimeMillis: 2,
   nReturned: 354
 }
@@ -39,15 +39,201 @@ Loading file: queries/part4_indexes.js
   inputStageStage: 'IXSCAN',
   indexName: 'work_music_index',
   totalDocsExamined: 16141,
-  totalKeysExamined: 16844,
+  totalKeysExamined: 16602,
   nReturned: 16141
 }
 
 === Завдання 3: Covered query — explain() ===
+
+without projection (not covered):
 {
   stage: 'FETCH',
   inputStageStage: 'IXSCAN',
   totalDocsExamined: 317,
-  totalKeysExamined: 620,
+  totalKeysExamined: 317,
   nReturned: 317
+}
+
+with projection (should be covered):
+{
+  explainVersion: '1',
+  queryPlanner: {
+    namespace: 'spotify.tracks',
+    parsedQuery: {
+      '$and': [
+        {
+          track_genre: {
+            '$eq': 'pop'
+          }
+        },
+        {
+          popularity: {
+            '$gte': 70
+          }
+        }
+      ]
+    },
+    indexFilterSet: false,
+    queryHash: '0C3B2F14',
+    planCacheShapeHash: '0C3B2F14',
+    planCacheKey: 'C5EB36C6',
+    optimizationTimeMillis: 0,
+    maxIndexedOrSolutionsReached: false,
+    maxIndexedAndSolutionsReached: false,
+    maxScansToExplodeReached: false,
+    prunedSimilarIndexes: false,
+    winningPlan: {
+      isCached: false,
+      stage: 'PROJECTION_COVERED',
+      transformBy: {
+        _id: 0,
+        track_genre: 1,
+        popularity: 1
+      },
+      inputStage: {
+        stage: 'IXSCAN',
+        keyPattern: {
+          track_genre: 1,
+          popularity: -1,
+          'audio_features.danceability': 1
+        },
+        indexName: 'genre_danceability_popularity',
+        isMultiKey: false,
+        multiKeyPaths: {
+          track_genre: [],
+          popularity: [],
+          'audio_features.danceability': []
+        },
+        isUnique: false,
+        isSparse: false,
+        isPartial: false,
+        indexVersion: 2,
+        direction: 'forward',
+        indexBounds: {
+          track_genre: [
+            '["pop", "pop"]'
+          ],
+          popularity: [
+            '[inf.0, 70]'
+          ],
+          'audio_features.danceability': [
+            '[MinKey, MaxKey]'
+          ]
+        }
+      }
+    },
+    rejectedPlans: []
+  },
+  executionStats: {
+    executionSuccess: true,
+    nReturned: 317,
+    executionTimeMillis: 0,
+    totalKeysExamined: 317,
+    totalDocsExamined: 0,
+    executionStages: {
+      isCached: false,
+      stage: 'PROJECTION_COVERED',
+      nReturned: 317,
+      executionTimeMillisEstimate: 0,
+      works: 318,
+      advanced: 317,
+      needTime: 0,
+      needYield: 0,
+      saveState: 0,
+      restoreState: 0,
+      isEOF: 1,
+      transformBy: {
+        _id: 0,
+        track_genre: 1,
+        popularity: 1
+      },
+      inputStage: {
+        stage: 'IXSCAN',
+        nReturned: 317,
+        executionTimeMillisEstimate: 0,
+        works: 318,
+        advanced: 317,
+        needTime: 0,
+        needYield: 0,
+        saveState: 0,
+        restoreState: 0,
+        isEOF: 1,
+        keyPattern: {
+          track_genre: 1,
+          popularity: -1,
+          'audio_features.danceability': 1
+        },
+        indexName: 'genre_danceability_popularity',
+        isMultiKey: false,
+        multiKeyPaths: {
+          track_genre: [],
+          popularity: [],
+          'audio_features.danceability': []
+        },
+        isUnique: false,
+        isSparse: false,
+        isPartial: false,
+        indexVersion: 2,
+        direction: 'forward',
+        indexBounds: {
+          track_genre: [
+            '["pop", "pop"]'
+          ],
+          popularity: [
+            '[inf.0, 70]'
+          ],
+          'audio_features.danceability': [
+            '[MinKey, MaxKey]'
+          ]
+        },
+        keysExamined: 317,
+        seeks: 1,
+        dupsTested: 0,
+        dupsDropped: 0
+      }
+    }
+  },
+  queryShapeHash: 'A84CB0444667D92E94C3C74DF466D739A1182D24BBC82E708D2192747D9F0ECA',
+  command: {
+    find: 'tracks',
+    filter: {
+      track_genre: 'pop',
+      popularity: {
+        '$gte': 70
+      }
+    },
+    projection: {
+      _id: 0,
+      track_genre: 1,
+      popularity: 1
+    },
+    '$db': 'spotify'
+  },
+  serverInfo: {
+    host: 'ac-nykggss-shard-00-01.iepcnm5.mongodb.net',
+    port: 27017,
+    version: '8.0.26',
+    gitVersion: 'a2c24805265db119cc39f2f54e067b4294a4ddd2'
+  },
+  serverParameters: {
+    internalQueryFacetBufferSizeBytes: 104857600,
+    internalQueryFacetMaxOutputDocSizeBytes: 104857600,
+    internalLookupStageIntermediateDocumentMaxSizeBytes: 16793600,
+    internalDocumentSourceGroupMaxMemoryBytes: 104857600,
+    internalQueryMaxBlockingSortMemoryUsageBytes: 33554432,
+    internalQueryProhibitBlockingMergeOnMongoS: 0,
+    internalQueryMaxAddToSetBytes: 104857600,
+    internalDocumentSourceSetWindowFieldsMaxMemoryBytes: 104857600,
+    internalQueryFrameworkControl: 'trySbeRestricted',
+    internalQueryPlannerIgnoreIndexWithCollationForRegex: 1
+  },
+  ok: 1,
+  '$clusterTime': {
+    clusterTime: Timestamp({ t: 1782133229, i: 32 }),
+    signature: {
+      hash: Binary.createFromBase64('zASiMHrNwRtcrKxE+vIZUP62mTU=', 0),
+      keyId: Long('7603454928517857286')
+    }
+  },
+  operationTime: Timestamp({ t: 1782133229, i: 32 })
 }
